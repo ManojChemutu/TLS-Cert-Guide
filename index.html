@@ -1,0 +1,1387 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TLS Certificates — Deep Dive</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;500;600;700&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #090c10;
+    --bg2: #0d1117;
+    --bg3: #161b22;
+    --bg4: #1c2330;
+    --border: #2d3748;
+    --border2: #3d4f6a;
+    --accent: #00d9ff;
+    --accent2: #00ff94;
+    --accent3: #ff6b35;
+    --accent4: #a78bfa;
+    --text: #e2e8f0;
+    --text2: #94a3b8;
+    --text3: #64748b;
+    --red: #ff4757;
+    --yellow: #ffd32a;
+    --mono: 'Share Tech Mono', monospace;
+    --head: 'Rajdhani', sans-serif;
+    --body: 'DM Sans', sans-serif;
+  }
+
+- { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+background: var(–bg);
+color: var(–text);
+font-family: var(–body);
+font-size: 15px;
+line-height: 1.7;
+min-height: 100vh;
+}
+
+/* Grid bg */
+body::before {
+content: ‘’;
+position: fixed;
+inset: 0;
+background-image:
+linear-gradient(rgba(0,217,255,0.03) 1px, transparent 1px),
+linear-gradient(90deg, rgba(0,217,255,0.03) 1px, transparent 1px);
+background-size: 40px 40px;
+pointer-events: none;
+z-index: 0;
+}
+
+/* ── NAV ── */
+nav {
+position: sticky;
+top: 0;
+z-index: 100;
+background: rgba(9,12,16,0.92);
+backdrop-filter: blur(12px);
+border-bottom: 1px solid var(–border);
+padding: 0 2rem;
+display: flex;
+align-items: center;
+gap: 0;
+height: 52px;
+overflow-x: auto;
+}
+
+nav .logo {
+font-family: var(–head);
+font-size: 1.1rem;
+font-weight: 700;
+color: var(–accent);
+letter-spacing: 2px;
+text-transform: uppercase;
+white-space: nowrap;
+margin-right: 2rem;
+padding-right: 2rem;
+border-right: 1px solid var(–border);
+}
+
+nav button {
+background: none;
+border: none;
+color: var(–text3);
+font-family: var(–head);
+font-size: 0.85rem;
+font-weight: 600;
+letter-spacing: 1px;
+text-transform: uppercase;
+padding: 0 1rem;
+height: 52px;
+cursor: pointer;
+white-space: nowrap;
+transition: all 0.2s;
+border-bottom: 2px solid transparent;
+position: relative;
+}
+
+nav button:hover { color: var(–text); }
+nav button.active { color: var(–accent); border-bottom-color: var(–accent); }
+
+/* ── SECTIONS ── */
+section { display: none; position: relative; z-index: 1; }
+section.active { display: block; }
+
+.container {
+max-width: 1100px;
+margin: 0 auto;
+padding: 3rem 2rem;
+}
+
+/* ── HERO ── */
+.hero {
+padding: 4rem 2rem 2rem;
+max-width: 1100px;
+margin: 0 auto;
+}
+
+.hero-tag {
+font-family: var(–mono);
+font-size: 0.7rem;
+color: var(–accent2);
+letter-spacing: 3px;
+text-transform: uppercase;
+margin-bottom: 1rem;
+}
+
+h1 {
+font-family: var(–head);
+font-size: clamp(2.2rem, 5vw, 3.5rem);
+font-weight: 700;
+line-height: 1.1;
+letter-spacing: 1px;
+color: #fff;
+}
+
+h1 span { color: var(–accent); }
+
+.hero-sub {
+color: var(–text2);
+font-size: 1rem;
+max-width: 600px;
+margin-top: 1rem;
+font-weight: 300;
+}
+
+.hero-badges {
+display: flex;
+flex-wrap: wrap;
+gap: 0.5rem;
+margin-top: 2rem;
+}
+
+.badge {
+font-family: var(–mono);
+font-size: 0.7rem;
+padding: 0.3rem 0.8rem;
+border-radius: 2px;
+letter-spacing: 1px;
+}
+
+.badge-cyan  { background: rgba(0,217,255,0.1);  color: var(–accent);  border: 1px solid rgba(0,217,255,0.3); }
+.badge-green { background: rgba(0,255,148,0.1);  color: var(–accent2); border: 1px solid rgba(0,255,148,0.3); }
+.badge-orange{ background: rgba(255,107,53,0.1); color: var(–accent3); border: 1px solid rgba(255,107,53,0.3); }
+.badge-purple{ background: rgba(167,139,250,0.1);color: var(–accent4); border: 1px solid rgba(167,139,250,0.3); }
+
+/* ── SECTION TITLE ── */
+.sec-title {
+font-family: var(–head);
+font-size: 1.6rem;
+font-weight: 700;
+letter-spacing: 1px;
+color: #fff;
+margin-bottom: 0.5rem;
+}
+
+.sec-title span { color: var(–accent); }
+
+.sec-desc {
+color: var(–text2);
+font-size: 0.9rem;
+margin-bottom: 2rem;
+font-weight: 300;
+}
+
+/* ── CARDS ── */
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.2rem; }
+.grid3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; }
+
+.card {
+background: var(–bg3);
+border: 1px solid var(–border);
+border-radius: 6px;
+padding: 1.4rem;
+position: relative;
+transition: border-color 0.2s, transform 0.2s;
+}
+
+.card:hover { border-color: var(–border2); transform: translateY(-2px); }
+
+.card-accent-top { border-top: 2px solid var(–accent); }
+.card-accent-green { border-top: 2px solid var(–accent2); }
+.card-accent-orange { border-top: 2px solid var(–accent3); }
+.card-accent-purple { border-top: 2px solid var(–accent4); }
+.card-accent-red { border-top: 2px solid var(–red); }
+
+.card-icon {
+font-size: 1.5rem;
+margin-bottom: 0.8rem;
+}
+
+.card h3 {
+font-family: var(–head);
+font-size: 1rem;
+font-weight: 700;
+letter-spacing: 1px;
+color: var(–accent);
+text-transform: uppercase;
+margin-bottom: 0.5rem;
+}
+
+.card p, .card li {
+color: var(–text2);
+font-size: 0.88rem;
+line-height: 1.6;
+}
+
+.card ul { padding-left: 1.2rem; }
+.card li { margin-bottom: 0.3rem; }
+
+/* ── CODE ── */
+.code-block {
+background: #0a0f16;
+border: 1px solid var(–border);
+border-left: 3px solid var(–accent);
+border-radius: 4px;
+padding: 1.2rem 1.4rem;
+font-family: var(–mono);
+font-size: 0.78rem;
+line-height: 1.8;
+color: #a8d8ea;
+overflow-x: auto;
+margin: 1rem 0;
+position: relative;
+}
+
+.code-block .comment { color: #4a5568; }
+.code-block .cmd { color: var(–accent2); }
+.code-block .flag { color: var(–accent3); }
+.code-block .val { color: var(–accent4); }
+.code-block .out { color: var(–yellow); }
+
+.code-label {
+font-family: var(–mono);
+font-size: 0.65rem;
+color: var(–text3);
+letter-spacing: 2px;
+text-transform: uppercase;
+margin-bottom: 0.5rem;
+}
+
+/* ── FLOW DIAGRAM ── */
+.flow {
+display: flex;
+flex-wrap: wrap;
+align-items: center;
+gap: 0;
+margin: 1.5rem 0;
+background: var(–bg3);
+border: 1px solid var(–border);
+border-radius: 6px;
+padding: 1.5rem;
+overflow-x: auto;
+}
+
+.flow-step {
+background: var(–bg4);
+border: 1px solid var(–border);
+border-radius: 4px;
+padding: 0.7rem 1rem;
+min-width: 120px;
+text-align: center;
+flex-shrink: 0;
+}
+
+.flow-step .num {
+font-family: var(–mono);
+font-size: 0.65rem;
+color: var(–accent);
+display: block;
+margin-bottom: 0.2rem;
+}
+
+.flow-step .label {
+font-family: var(–head);
+font-size: 0.8rem;
+font-weight: 600;
+color: var(–text);
+letter-spacing: 0.5px;
+}
+
+.flow-arrow {
+color: var(–text3);
+font-size: 1.2rem;
+padding: 0 0.5rem;
+flex-shrink: 0;
+}
+
+/* ── TABLE ── */
+table {
+width: 100%;
+border-collapse: collapse;
+font-size: 0.85rem;
+margin: 1rem 0;
+}
+
+thead tr { background: var(–bg4); }
+thead th {
+font-family: var(–head);
+font-size: 0.75rem;
+letter-spacing: 1.5px;
+text-transform: uppercase;
+color: var(–accent);
+padding: 0.8rem 1rem;
+text-align: left;
+border-bottom: 1px solid var(–border);
+}
+
+tbody tr { border-bottom: 1px solid var(–border); transition: background 0.15s; }
+tbody tr:hover { background: rgba(0,217,255,0.04); }
+td { padding: 0.75rem 1rem; color: var(–text2); vertical-align: top; }
+td:first-child { color: var(–text); font-family: var(–mono); font-size: 0.8rem; }
+
+/* ── ALERT BOXES ── */
+.alert {
+border-radius: 4px;
+padding: 1rem 1.2rem;
+margin: 1rem 0;
+font-size: 0.88rem;
+display: flex;
+gap: 0.8rem;
+align-items: flex-start;
+}
+
+.alert-cyan   { background: rgba(0,217,255,0.08);  border-left: 3px solid var(–accent);  color: var(–text2); }
+.alert-green  { background: rgba(0,255,148,0.08);  border-left: 3px solid var(–accent2); color: var(–text2); }
+.alert-orange { background: rgba(255,107,53,0.08); border-left: 3px solid var(–accent3); color: var(–text2); }
+.alert-red    { background: rgba(255,71,87,0.08);  border-left: 3px solid var(–red);     color: var(–text2); }
+
+.alert-icon { font-size: 1rem; flex-shrink: 0; margin-top: 0.1rem; }
+.alert strong { color: var(–text); display: block; margin-bottom: 0.2rem; }
+
+/* ── INLINE HIGHLIGHT ── */
+code {
+font-family: var(–mono);
+font-size: 0.8rem;
+background: rgba(0,217,255,0.1);
+color: var(–accent);
+padding: 0.1rem 0.4rem;
+border-radius: 3px;
+}
+
+/* ── HANDSHAKE VISUAL ── */
+.handshake {
+display: grid;
+grid-template-columns: 1fr 60px 1fr;
+gap: 0;
+margin: 1.5rem 0;
+background: var(–bg3);
+border: 1px solid var(–border);
+border-radius: 6px;
+overflow: hidden;
+}
+
+.hs-col {
+padding: 1rem;
+}
+
+.hs-col h4 {
+font-family: var(–head);
+font-size: 0.85rem;
+font-weight: 700;
+letter-spacing: 1px;
+color: var(–accent);
+text-transform: uppercase;
+margin-bottom: 0.8rem;
+padding-bottom: 0.5rem;
+border-bottom: 1px solid var(–border);
+text-align: center;
+}
+
+.hs-col.server h4 { color: var(–accent2); }
+
+.hs-mid {
+border-left: 1px solid var(–border);
+border-right: 1px solid var(–border);
+display: flex;
+flex-direction: column;
+align-items: center;
+justify-content: center;
+padding: 0.5rem;
+background: var(–bg4);
+gap: 0.3rem;
+}
+
+.hs-msg {
+font-family: var(–mono);
+font-size: 0.68rem;
+color: var(–text3);
+text-align: center;
+writing-mode: vertical-rl;
+transform: rotate(180deg);
+letter-spacing: 1px;
+}
+
+.hs-arrow { color: var(–accent3); font-size: 0.8rem; }
+
+.hs-step {
+font-family: var(–mono);
+font-size: 0.72rem;
+color: var(–text3);
+padding: 0.3rem 0;
+border-bottom: 1px solid rgba(45,55,72,0.5);
+line-height: 1.5;
+}
+
+.hs-step:last-child { border-bottom: none; }
+.hs-step span { color: var(–accent4); }
+
+/* ── CERT ANATOMY ── */
+.cert-box {
+background: #0a0f16;
+border: 1px solid var(–border);
+border-radius: 6px;
+overflow: hidden;
+font-family: var(–mono);
+font-size: 0.78rem;
+margin: 1rem 0;
+}
+
+.cert-header {
+background: var(–bg4);
+padding: 0.6rem 1rem;
+font-family: var(–head);
+font-size: 0.8rem;
+color: var(–accent);
+letter-spacing: 2px;
+text-transform: uppercase;
+border-bottom: 1px solid var(–border);
+}
+
+.cert-field {
+display: flex;
+padding: 0.45rem 1rem;
+border-bottom: 1px solid rgba(45,55,72,0.4);
+gap: 1rem;
+}
+
+.cert-field:last-child { border-bottom: none; }
+.cert-key { color: var(–accent3); min-width: 180px; flex-shrink: 0; }
+.cert-val { color: var(–text2); word-break: break-all; }
+.cert-val.green { color: var(–accent2); }
+.cert-val.yellow { color: var(–yellow); }
+.cert-val.purple { color: var(–accent4); }
+
+/* ── PROGRESS / STATUS ── */
+.status-grid {
+display: grid;
+grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+gap: 1rem;
+margin: 1rem 0;
+}
+
+.status-item {
+background: var(–bg3);
+border: 1px solid var(–border);
+border-radius: 4px;
+padding: 1rem;
+}
+
+.status-item .s-label {
+font-family: var(–mono);
+font-size: 0.65rem;
+color: var(–text3);
+letter-spacing: 2px;
+text-transform: uppercase;
+margin-bottom: 0.4rem;
+}
+
+.status-item .s-val {
+font-family: var(–head);
+font-size: 1.4rem;
+font-weight: 700;
+color: var(–accent);
+}
+
+.status-item .s-desc {
+font-size: 0.78rem;
+color: var(–text3);
+margin-top: 0.2rem;
+}
+
+/* ── DIVIDER ── */
+.divider {
+height: 1px;
+background: linear-gradient(90deg, transparent, var(–border), transparent);
+margin: 2rem 0;
+}
+
+/* ── RESPONSIVE ── */
+@media (max-width: 600px) {
+.container { padding: 1.5rem 1rem; }
+.hero { padding: 2rem 1rem 1rem; }
+.handshake { grid-template-columns: 1fr; }
+.hs-mid { flex-direction: row; writing-mode: horizontal-tb; transform: none; }
+}
+</style>
+
+</head>
+<body>
+
+<nav>
+  <div class="logo">🔒 TLS</div>
+  <button class="active" onclick="show('overview')">Overview</button>
+  <button onclick="show('handshake')">Handshake</button>
+  <button onclick="show('certs')">Certificates</button>
+  <button onclick="show('commands')">Commands</button>
+  <button onclick="show('types')">Cert Types</button>
+  <button onclick="show('devops')">DevOps Use</button>
+  <button onclick="show('troubleshoot')">Debug</button>
+</nav>
+
+<!-- ═══════════════════════════════ OVERVIEW ═══════════════════════════════ -->
+
+<section id="overview" class="active">
+  <div class="hero">
+    <div class="hero-tag">// Security Infrastructure</div>
+    <h1>TLS <span>Certificates</span><br>& Protocol Deep Dive</h1>
+    <p class="hero-sub">Transport Layer Security — how it works, how to manage it, and how to never let an expired cert take down prod.</p>
+    <div class="hero-badges">
+      <span class="badge badge-cyan">TLS 1.2 / 1.3</span>
+      <span class="badge badge-green">X.509 Standard</span>
+      <span class="badge badge-orange">PKI Hierarchy</span>
+      <span class="badge badge-purple">mTLS / DevOps</span>
+    </div>
+  </div>
+
+  <div class="container">
+    <div class="sec-title">What is <span>TLS?</span></div>
+    <p class="sec-desc">TLS (Transport Layer Security) is the cryptographic protocol that secures communications over a network. It replaced SSL and is the backbone of HTTPS, gRPC, Kafka, and virtually every modern secure channel.</p>
+
+```
+<div class="grid3">
+  <div class="card card-accent-top">
+    <div class="card-icon">🔐</div>
+    <h3>Confidentiality</h3>
+    <p>All data in transit is encrypted. Even if intercepted, it's unreadable without the session keys. Uses symmetric encryption (AES-GCM) after handshake.</p>
+  </div>
+  <div class="card card-accent-green">
+    <div class="card-icon">✅</div>
+    <h3>Authentication</h3>
+    <p>Verifies you're talking to the real server (not an impersonator) via digital certificates signed by a trusted Certificate Authority (CA).</p>
+  </div>
+  <div class="card card-accent-orange">
+    <div class="card-icon">🛡️</div>
+    <h3>Integrity</h3>
+    <p>Ensures data isn't tampered in transit. Every record has a MAC (Message Authentication Code) — any modification is detected and the connection is dropped.</p>
+  </div>
+</div>
+
+<div class="divider"></div>
+
+<div class="sec-title">TLS vs <span>SSL</span> — Version Timeline</div>
+<p class="sec-desc">Know what's deprecated. Enterprises still sometimes have SSLv3 or TLS 1.0 lurking in legacy systems.</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Version</th>
+      <th>Year</th>
+      <th>Status</th>
+      <th>Notes</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td>SSLv2</td><td>1995</td><td><span style="color:var(--red)">⛔ DEAD</span></td><td>Never use. Multiple critical vulns (DROWN).</td></tr>
+    <tr><td>SSLv3</td><td>1996</td><td><span style="color:var(--red)">⛔ DEAD</span></td><td>POODLE attack. RFC 7568 prohibits use.</td></tr>
+    <tr><td>TLS 1.0</td><td>1999</td><td><span style="color:var(--red)">⛔ Deprecated</span></td><td>PCI-DSS banned it since 2018. BEAST attack.</td></tr>
+    <tr><td>TLS 1.1</td><td>2006</td><td><span style="color:var(--red)">⛔ Deprecated</span></td><td>RFC 8996. Removed from all major browsers.</td></tr>
+    <tr><td>TLS 1.2</td><td>2008</td><td><span style="color:var(--yellow)">⚠ Legacy OK</span></td><td>Still widely used. Fine with strong cipher suites.</td></tr>
+    <tr><td>TLS 1.3</td><td>2018</td><td><span style="color:var(--accent2)">✅ Current</span></td><td>Faster (0-RTT), fewer round-trips, no legacy algorithms.</td></tr>
+  </tbody>
+</table>
+
+<div class="divider"></div>
+
+<div class="sec-title">PKI — The <span>Trust Chain</span></div>
+<p class="sec-desc">Public Key Infrastructure is the hierarchy that makes certificate trust work at internet scale.</p>
+
+<div class="flow">
+  <div class="flow-step">
+    <span class="num">ROOT</span>
+    <div class="label">Root CA</div>
+  </div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-step">
+    <span class="num">INTERMEDIATE</span>
+    <div class="label">Intermediate CA</div>
+  </div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-step">
+    <span class="num">LEAF</span>
+    <div class="label">Server Cert</div>
+  </div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-step">
+    <span class="num">CLIENT</span>
+    <div class="label">Browser / Client</div>
+  </div>
+</div>
+
+<div class="grid2" style="margin-top:1rem">
+  <div class="card">
+    <h3>Root CA</h3>
+    <ul>
+      <li>Self-signed, kept <strong>offline</strong> (air-gapped)</li>
+      <li>Pre-installed in OS/browser trust stores</li>
+      <li>Signs Intermediate CAs only</li>
+      <li>Examples: DigiCert Global Root, ISRG Root X1 (Let's Encrypt)</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h3>Intermediate CA</h3>
+    <ul>
+      <li>Signed by Root CA, lives online</li>
+      <li>Issues end-entity (leaf) certificates</li>
+      <li>If compromised → only that intermediate is revoked</li>
+      <li>Must be included in server's cert chain</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h3>Leaf / Server Cert</h3>
+    <ul>
+      <li>Tied to a specific domain/IP/service</li>
+      <li>Contains server's public key</li>
+      <li>Validity: typically 90 days – 1 year (2025+: 47 days)</li>
+      <li>Signed by Intermediate CA</li>
+    </ul>
+  </div>
+  <div class="card card-accent-purple">
+    <h3>Internal / Private CA</h3>
+    <ul>
+      <li>Used in enterprises for internal services</li>
+      <li>Root distributed via MDM / GPO / Kubernetes ConfigMap</li>
+      <li>Examples: HashiCorp Vault PKI, AWS Private CA, cert-manager</li>
+      <li>Common in Citi-style BFSI environments</li>
+    </ul>
+  </div>
+</div>
+```
+
+  </div>
+</section>
+
+<!-- ═══════════════════════════════ HANDSHAKE ═══════════════════════════════ -->
+
+<section id="handshake">
+  <div class="container">
+    <div class="sec-title">TLS <span>Handshake</span></div>
+    <p class="sec-desc">The negotiation that happens before a single byte of application data is exchanged. TLS 1.3 cut this from 2 round-trips to 1.</p>
+
+```
+<div class="grid2">
+  <div class="card card-accent-top">
+    <h3>TLS 1.2 Handshake — 2 RTT</h3>
+    <div class="handshake" style="grid-template-columns:1fr 80px 1fr; margin-top:0.8rem">
+      <div class="hs-col">
+        <h4>Client</h4>
+        <div class="hs-step"><span>→</span> ClientHello<br><small>supported TLS versions, cipher suites, random nonce, SNI</small></div>
+        <div class="hs-step"><span>←</span> Receive ServerHello</div>
+        <div class="hs-step"><span>←</span> Verify Certificate chain</div>
+        <div class="hs-step"><span>→</span> ClientKeyExchange (pre-master secret)</div>
+        <div class="hs-step"><span>→</span> ChangeCipherSpec + Finished</div>
+        <div class="hs-step"><span>←</span> Finished → 🔒 App Data</div>
+      </div>
+      <div class="hs-mid">
+        <div class="hs-arrow">⟺</div>
+        <div class="hs-msg">2 RTT</div>
+      </div>
+      <div class="hs-col server">
+        <h4>Server</h4>
+        <div class="hs-step"><span>←</span> Receive ClientHello</div>
+        <div class="hs-step"><span>→</span> ServerHello (chosen cipher)</div>
+        <div class="hs-step"><span>→</span> Certificate + ServerKeyExchange</div>
+        <div class="hs-step"><span>→</span> ServerHelloDone</div>
+        <div class="hs-step"><span>←</span> Receive ClientKeyExchange</div>
+        <div class="hs-step"><span>→</span> ChangeCipherSpec + Finished</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card card-accent-green">
+    <h3>TLS 1.3 Handshake — 1 RTT</h3>
+    <div class="handshake" style="grid-template-columns:1fr 80px 1fr; margin-top:0.8rem">
+      <div class="hs-col">
+        <h4>Client</h4>
+        <div class="hs-step"><span>→</span> ClientHello<br><small>includes key_share (DH params) upfront</small></div>
+        <div class="hs-step"><span>←</span> Derive shared secret immediately</div>
+        <div class="hs-step"><span>←</span> Verify encrypted certificate</div>
+        <div class="hs-step"><span>→</span> Finished → 🔒 App Data</div>
+      </div>
+      <div class="hs-mid">
+        <div class="hs-arrow">⟺</div>
+        <div class="hs-msg">1 RTT</div>
+      </div>
+      <div class="hs-col server">
+        <h4>Server</h4>
+        <div class="hs-step"><span>←</span> Receive ClientHello</div>
+        <div class="hs-step"><span>→</span> ServerHello + key_share</div>
+        <div class="hs-step"><span>→</span> Encrypted: Cert + CertVerify</div>
+        <div class="hs-step"><span>→</span> Finished → 🔒 App Data</div>
+      </div>
+    </div>
+    <div class="alert alert-green" style="margin-top:0.8rem">
+      <span class="alert-icon">⚡</span>
+      <div><strong>0-RTT Resumption</strong> TLS 1.3 supports 0-RTT session resumption using a pre-shared key from a previous session. Risk: replay attacks on non-idempotent requests.</div>
+    </div>
+  </div>
+</div>
+
+<div class="divider"></div>
+
+<div class="sec-title">What is <span>mTLS?</span></div>
+<p class="sec-desc">Mutual TLS — both client AND server present certificates. Critical in zero-trust, service mesh (Istio), and BFSI inter-service communication.</p>
+
+<div class="flow">
+  <div class="flow-step"><span class="num">1</span><div class="label">Client→ ClientHello</div></div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-step"><span class="num">2</span><div class="label">Server sends Cert + CertRequest</div></div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-step"><span class="num">3</span><div class="label">Client sends its Cert</div></div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-step"><span class="num">4</span><div class="label">Server validates client cert</div></div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-step"><span class="num">5</span><div class="label">Mutual Auth ✅</div></div>
+</div>
+
+<div class="grid2">
+  <div class="card">
+    <h3>mTLS Use Cases</h3>
+    <ul>
+      <li>Istio / Linkerd service mesh (auto mTLS)</li>
+      <li>Kafka broker ↔ producer/consumer auth</li>
+      <li>Kubernetes apiserver ↔ kubelet</li>
+      <li>API Gateway → backend services</li>
+      <li>CyberArk EPM / PAM agent communication</li>
+      <li>BFSI: inter-bank settlement networks</li>
+    </ul>
+  </div>
+  <div class="card card-accent-orange">
+    <h3>mTLS vs API Keys</h3>
+    <table>
+      <thead><tr><th>Aspect</th><th>mTLS</th><th>API Key</th></tr></thead>
+      <tbody>
+        <tr><td>Auth type</td><td>Cert-based</td><td>Secret token</td></tr>
+        <tr><td>Rotation</td><td>Cert expiry</td><td>Manual/periodic</td></tr>
+        <tr><td>Revocation</td><td>CRL/OCSP</td><td>Delete key</td></tr>
+        <tr><td>Zero-trust fit</td><td>✅ High</td><td>⚠ Medium</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+```
+
+  </div>
+</section>
+
+<!-- ═══════════════════════════════ CERTS ═══════════════════════════════ -->
+
+<section id="certs">
+  <div class="container">
+    <div class="sec-title">Certificate <span>Anatomy</span></div>
+    <p class="sec-desc">An X.509 v3 certificate is a structured document. Know every field — especially in incident response.</p>
+
+```
+<div class="cert-box">
+  <div class="cert-header">X.509 Certificate Structure</div>
+  <div class="cert-field"><span class="cert-key">Version</span><span class="cert-val green">v3</span></div>
+  <div class="cert-field"><span class="cert-key">Serial Number</span><span class="cert-val yellow">03:E6:7F:A2:... (unique per CA)</span></div>
+  <div class="cert-field"><span class="cert-key">Signature Algorithm</span><span class="cert-val">sha256WithRSAEncryption / ecdsa-with-SHA384</span></div>
+  <div class="cert-field"><span class="cert-key">Issuer (CA)</span><span class="cert-val purple">CN=DigiCert Global G2 TLS RSA SHA256, O=DigiCert</span></div>
+  <div class="cert-field"><span class="cert-key">Validity: Not Before</span><span class="cert-val green">2024-01-15 00:00:00 UTC</span></div>
+  <div class="cert-field"><span class="cert-key">Validity: Not After</span><span class="cert-val yellow">2025-02-15 23:59:59 UTC</span></div>
+  <div class="cert-field"><span class="cert-key">Subject</span><span class="cert-val">CN=api.example.com, O=Example Corp, C=IN</span></div>
+  <div class="cert-field"><span class="cert-key">Public Key (RSA)</span><span class="cert-val">2048-bit or 4096-bit RSA / 256-bit ECDSA P-256</span></div>
+  <div class="cert-field"><span class="cert-key">SAN (Subject Alt Name)</span><span class="cert-val green">DNS:api.example.com, DNS:*.example.com, IP:10.0.1.5</span></div>
+  <div class="cert-field"><span class="cert-key">Key Usage</span><span class="cert-val">Digital Signature, Key Encipherment</span></div>
+  <div class="cert-field"><span class="cert-key">Extended Key Usage</span><span class="cert-val">TLS Web Server Authentication (1.3.6.1.5.5.7.3.1)</span></div>
+  <div class="cert-field"><span class="cert-key">CRL Distribution Point</span><span class="cert-val">http://crl3.digicert.com/...</span></div>
+  <div class="cert-field"><span class="cert-key">OCSP URL</span><span class="cert-val">http://ocsp.digicert.com</span></div>
+  <div class="cert-field"><span class="cert-key">CA Issuers URL</span><span class="cert-val">http://cacerts.digicert.com/DigiCertG2.crt</span></div>
+  <div class="cert-field"><span class="cert-key">Signature</span><span class="cert-val purple">CA's digital signature over all above fields</span></div>
+</div>
+
+<div class="divider"></div>
+
+<div class="sec-title">Certificate <span>Formats</span></div>
+<p class="sec-desc">The same certificate can exist in multiple file formats. Knowing which format a system expects saves hours of debugging.</p>
+
+<table>
+  <thead>
+    <tr><th>Format</th><th>Extension</th><th>Encoding</th><th>Contents</th><th>Used By</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>PEM</td><td>.pem .crt .cer .key</td><td>Base64 + headers</td><td>Cert, key, or chain</td><td>nginx, OpenSSL, Kubernetes secrets</td></tr>
+    <tr><td>DER</td><td>.der .cer</td><td>Binary ASN.1</td><td>Single cert (no chain)</td><td>Java, Windows, older apps</td></tr>
+    <tr><td>PKCS#12</td><td>.pfx .p12</td><td>Binary, password-protected</td><td>Cert + private key + chain</td><td>Windows, Java keystores, CyberArk</td></tr>
+    <tr><td>PKCS#7</td><td>.p7b .p7c</td><td>Base64 or Binary</td><td>Cert chain (no key)</td><td>Java, Windows cert import</td></tr>
+    <tr><td>JKS</td><td>.jks</td><td>Java-proprietary binary</td><td>Certs + keys</td><td>WebLogic, Tomcat, Kafka</td></tr>
+    <tr><td>CSR</td><td>.csr .req</td><td>PEM Base64</td><td>Cert Signing Request</td><td>Sent to CA for signing</td></tr>
+  </tbody>
+</table>
+
+<div class="divider"></div>
+
+<div class="sec-title">Revocation <span>Mechanisms</span></div>
+<div class="grid2">
+  <div class="card card-accent-orange">
+    <h3>CRL — Cert Revocation List</h3>
+    <p>A signed list published by CA of revoked serial numbers. Client downloads periodically. Can be large and stale.</p>
+    <br>
+    <p style="color:var(--text3); font-size:0.8rem">⚠ Problem: Clients cache CRLs. A revoked cert may still work until CRL expires.</p>
+  </div>
+  <div class="card card-accent-green">
+    <h3>OCSP — Online Cert Status Protocol</h3>
+    <p>Real-time query to CA's OCSP responder: "Is serial X:Y:Z still valid?" Returns: <code>good</code> / <code>revoked</code> / <code>unknown</code></p>
+    <br>
+    <p><strong>OCSP Stapling:</strong> Server queries OCSP, staples response to TLS handshake. Reduces latency and privacy leakage.</p>
+  </div>
+</div>
+```
+
+  </div>
+</section>
+
+<!-- ═══════════════════════════════ COMMANDS ═══════════════════════════════ -->
+
+<section id="commands">
+  <div class="container">
+    <div class="sec-title">OpenSSL <span>Commands</span></div>
+    <p class="sec-desc">Essential commands for every DevOps / SRE engineer. These will get you through 95% of cert-related tasks.</p>
+
+```
+<div class="code-label">// Generate private key + self-signed cert</div>
+<div class="code-block">
+```
+
+<span class="comment"># RSA 4096-bit key + self-signed cert (valid 365 days)</span>
+<span class="cmd">openssl req</span> <span class="flag">-x509 -newkey rsa:4096 -keyout key.pem -out cert.pem</span>   
+<span class="flag">-days</span> <span class="val">365</span> <span class="flag">-nodes</span>   
+<span class="flag">-subj</span> <span class="val">”/CN=myservice.example.com/O=MyCorp/C=IN”</span>
+
+<span class="comment"># ECDSA P-256 (faster, smaller, preferred for TLS 1.3)</span>
+<span class="cmd">openssl ecparam</span> <span class="flag">-name prime256v1 -genkey -noout -out ec-key.pem</span>
+<span class="cmd">openssl req</span> <span class="flag">-new -x509 -key ec-key.pem -out ec-cert.pem -days 365</span>
+</div>
+
+```
+<div class="code-label">// Generate CSR (to send to CA)</div>
+<div class="code-block">
+```
+
+<span class="comment"># Step 1: Generate private key</span>
+<span class="cmd">openssl genrsa</span> <span class="flag">-out</span> <span class="val">server.key</span> 4096
+
+<span class="comment"># Step 2: Generate CSR (Certificate Signing Request)</span>
+<span class="cmd">openssl req</span> <span class="flag">-new</span> <span class="flag">-key</span> <span class="val">server.key</span> <span class="flag">-out</span> <span class="val">server.csr</span>   
+<span class="flag">-subj</span> <span class="val">”/CN=api.mybank.com/O=MyBank/OU=Infra/C=IN/ST=MH/L=Pune”</span>
+
+<span class="comment"># CSR with Subject Alternative Names (SAN) — REQUIRED for modern certs</span>
+<span class="cmd">openssl req</span> <span class="flag">-new -key server.key -out server.csr</span>   
+<span class="flag">-config</span> <span class="val">san.cnf</span>  <span class="comment"># see san.cnf below</span>
+</div>
+
+```
+<div class="code-label">// san.cnf — config for SAN</div>
+<div class="code-block">
+```
+
+[req]
+distinguished_name = req_distinguished_name
+req_extensions     = v3_req
+prompt             = no
+
+[req_distinguished_name]
+CN = api.mybank.com
+O  = MyBank
+C  = IN
+
+[v3_req]
+subjectAltName = @alt_names
+
+[alt_names]
+DNS.1 = api.mybank.com
+DNS.2 = *.mybank.com
+IP.1  = 10.100.0.50
+</div>
+
+```
+<div class="code-label">// Inspect / Verify certificates</div>
+<div class="code-block">
+```
+
+<span class="comment"># View cert details (human-readable)</span>
+<span class="cmd">openssl x509</span> <span class="flag">-in cert.pem -text -noout</span>
+
+<span class="comment"># Check expiry date only</span>
+<span class="cmd">openssl x509</span> <span class="flag">-in cert.pem -noout -dates</span>
+<span class="out">notBefore=Jan 15 00:00:00 2024 GMT
+notAfter=Feb 15 23:59:59 2025 GMT</span>
+
+<span class="comment"># Check a remote server’s certificate</span>
+<span class="cmd">openssl s_client</span> <span class="flag">-connect api.example.com:443 -servername api.example.com</span>
+<span class="cmd">echo</span> <span class="val">| openssl s_client -connect host:443 2>/dev/null | openssl x509 -noout -enddate</span>
+
+<span class="comment"># Verify cert chain</span>
+<span class="cmd">openssl verify</span> <span class="flag">-CAfile ca-chain.pem server.crt</span>
+<span class="out">server.crt: OK</span>
+
+<span class="comment"># Check if private key matches certificate</span>
+<span class="cmd">openssl x509 -noout -modulus -in cert.pem | openssl md5</span>
+<span class="cmd">openssl rsa  -noout -modulus -in key.pem  | openssl md5</span>
+<span class="comment"># MD5 values must match!</span>
+</div>
+
+```
+<div class="code-label">// Format conversions</div>
+<div class="code-block">
+```
+
+<span class="comment"># PEM → PKCS12 (pfx) — for Java/Windows</span>
+<span class="cmd">openssl pkcs12</span> <span class="flag">-export -out cert.pfx</span>   
+<span class="flag">-inkey key.pem -in cert.pem -certfile ca-chain.pem</span>
+
+<span class="comment"># PKCS12 → PEM</span>
+<span class="cmd">openssl pkcs12</span> <span class="flag">-in cert.pfx -out cert.pem -nodes</span>
+
+<span class="comment"># DER → PEM</span>
+<span class="cmd">openssl x509</span> <span class="flag">-inform DER -in cert.der -out cert.pem</span>
+
+<span class="comment"># PEM → DER</span>
+<span class="cmd">openssl x509</span> <span class="flag">-outform DER -in cert.pem -out cert.der</span>
+
+<span class="comment"># Import into Java Keystore (JKS) — WebLogic / Kafka</span>
+<span class="cmd">keytool -importkeystore</span>   
+<span class="flag">-destkeystore keystore.jks -deststoretype JKS</span>   
+<span class="flag">-srckeystore cert.pfx -srcstoretype PKCS12</span>
+</div>
+
+```
+<div class="code-label">// Batch expiry check script (production use)</div>
+<div class="code-block">
+```
+
+<span class="comment">#!/bin/bash — check expiry for all PEM files in a dir</span>
+WARN_DAYS=30
+for cert in /etc/ssl/certs/*.pem; do
+expiry=$(<span class="cmd">openssl x509</span> <span class="flag">-enddate -noout -in “$cert”</span> | cut -d= -f2)
+expiry_epoch=$(date -d “$expiry” +%s)
+now_epoch=$(date +%s)
+days_left=$(( (expiry_epoch - now_epoch) / 86400 ))
+if [ “$days_left” -lt “$WARN_DAYS” ]; then
+echo <span class="val">“⚠ $cert expires in $days_left days ($expiry)”</span>
+fi
+done
+</div>
+
+  </div>
+</section>
+
+<!-- ═══════════════════════════════ TYPES ═══════════════════════════════ -->
+
+<section id="types">
+  <div class="container">
+    <div class="sec-title">Certificate <span>Types</span></div>
+    <p class="sec-desc">Certs are classified by validation level and coverage scope. Choosing wrong can block compliance audits.</p>
+
+```
+<div class="sec-title" style="font-size:1.1rem; margin-top:1.5rem">By <span>Validation Level</span></div>
+<div class="grid3">
+  <div class="card card-accent-top">
+    <h3>DV — Domain Validation</h3>
+    <p>Proves control of the domain. Automated (ACME/Let's Encrypt). No company identity verified. Fastest (minutes). Fine for internal services, APIs.</p>
+    <br><span class="badge badge-green">Auto-renewable</span>
+  </div>
+  <div class="card card-accent-orange">
+    <h3>OV — Organization Validation</h3>
+    <p>CA verifies the organization is real (legal entity check). Shows O= in cert. Manual process, 1–3 days. Required by many banks and enterprises.</p>
+    <br><span class="badge badge-orange">BFSI standard</span>
+  </div>
+  <div class="card card-accent-purple">
+    <h3>EV — Extended Validation</h3>
+    <p>Strictest vetting. CA verifies identity, legal existence, physical address. Green bar / padlock in old browsers. Now rarely visible. Used by banking portals.</p>
+    <br><span class="badge badge-purple">Max trust</span>
+  </div>
+</div>
+
+<div class="divider"></div>
+
+<div class="sec-title" style="font-size:1.1rem">By <span>Coverage Scope</span></div>
+<div class="grid3">
+  <div class="card">
+    <h3>Single Domain</h3>
+    <p>Covers exactly one FQDN: <code>api.example.com</code>. Does NOT cover <code>www.example.com</code>.</p>
+  </div>
+  <div class="card card-accent-green">
+    <h3>Wildcard</h3>
+    <p>Covers one subdomain level: <code>*.example.com</code> → api, www, app. Does NOT cover <code>*.sub.example.com</code>.</p>
+    <br>
+    <div class="alert alert-orange" style="margin:0; padding: 0.5rem 0.8rem; font-size:0.78rem">
+      <span>⚠</span> <span>Wildcard key compromise → ALL subdomains compromised</span>
+    </div>
+  </div>
+  <div class="card">
+    <h3>Multi-Domain (SAN)</h3>
+    <p>SAN cert lists multiple FQDNs, IPs, even wildcard entries. One cert for 100+ domains. Standard in enterprises.</p>
+    <br>
+    <p style="font-size:0.78rem; color:var(--accent2)">✅ Preferred for microservice platforms</p>
+  </div>
+</div>
+
+<div class="divider"></div>
+
+<div class="sec-title" style="font-size:1.1rem">Specialized <span>Cert Types</span></div>
+<div class="grid2">
+  <div class="card">
+    <h3>Code Signing Cert</h3>
+    <p>Signs executables, scripts, packages. EKU = <code>1.3.6.1.5.5.7.3.3</code>. Prevents tamper warnings. Required for signed JAR files, Windows drivers, CI/CD artifacts.</p>
+  </div>
+  <div class="card">
+    <h3>Client Auth Cert</h3>
+    <p>EKU = <code>1.3.6.1.5.5.7.3.2</code>. Used in mTLS — client presents this to server for authentication. Issued per-service or per-user in zero-trust arch.</p>
+  </div>
+  <div class="card card-accent-purple">
+    <h3>Kubernetes Certs</h3>
+    <ul>
+      <li><code>apiserver.crt</code> — kube-apiserver TLS</li>
+      <li><code>apiserver-kubelet-client.crt</code> — apiserver → kubelet mTLS</li>
+      <li><code>etcd/server.crt</code> — etcd cluster TLS</li>
+      <li><code>front-proxy-client.crt</code> — aggregation layer</li>
+      <li>All managed by <code>kubeadm</code> / <code>cert-manager</code></li>
+    </ul>
+  </div>
+  <div class="card">
+    <h3>Kafka TLS Certs</h3>
+    <ul>
+      <li>Broker cert in JKS keystore</li>
+      <li>Truststore holds CA cert</li>
+      <li>Producer/consumer present client certs for mTLS</li>
+      <li>Config: <code>ssl.keystore.location</code>, <code>ssl.truststore.location</code></li>
+    </ul>
+  </div>
+</div>
+```
+
+  </div>
+</section>
+
+<!-- ═══════════════════════════════ DEVOPS ═══════════════════════════════ -->
+
+<section id="devops">
+  <div class="container">
+    <div class="sec-title">TLS in <span>DevOps / SRE</span></div>
+    <p class="sec-desc">Where certs live in your stack and how to automate them properly.</p>
+
+```
+<div class="grid2">
+  <div class="card card-accent-green">
+    <h3>cert-manager (Kubernetes)</h3>
+    <p>Auto-issues and renews certs in K8s. Supports Let's Encrypt (ACME), Vault PKI, AWS PCA.</p>
+    <div class="code-block" style="margin-top:0.8rem; font-size:0.72rem">
+```
+
+## <span class="comment"># ClusterIssuer for Let’s Encrypt</span>
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+name: letsencrypt-prod
+spec:
+acme:
+server: https://acme-v02.api.letsencrypt.org/
+email: ops@mybank.com
+privateKeySecretRef:
+name: letsencrypt-prod
+solvers:
+- http01:
+ingress:
+class: nginx
+
+<span class="comment"># Certificate resource</span>
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+name: api-tls
+namespace: prod
+spec:
+secretName: api-tls-secret
+issuerRef:
+name: letsencrypt-prod
+kind: ClusterIssuer
+dnsNames:
+
+- api.mybank.com
+  </div>
+  
+    </div>
+  
+    <div class="card card-accent-top">
+      <h3>HashiCorp Vault PKI</h3>
+      <p>Enterprise-grade internal CA. Certs issued on-demand with short TTLs. Integrates with K8s via vault-agent or external-secrets.</p>
+      <div class="code-block" style="margin-top:0.8rem; font-size:0.72rem">
+
+<span class="comment"># Enable PKI secrets engine</span>
+<span class="cmd">vault secrets enable</span> <span class="flag">-path=pki</span> pki
+<span class="cmd">vault secrets tune</span> <span class="flag">-max-lease-ttl=8760h</span> pki
+
+<span class="comment"># Generate root CA</span>
+<span class="cmd">vault write</span> pki/root/generate/internal   
+common_name=“MyBank Root CA” ttl=87600h
+
+<span class="comment"># Issue a cert (from app or CI/CD)</span>
+<span class="cmd">vault write</span> pki/issue/myapp-role   
+common_name=“payment-svc.internal”   
+ttl=“24h” alt_names=“localhost” ip_sans=“10.0.1.5”
+</div>
+</div>
+
+```
+  <div class="card">
+    <h3>nginx TLS Config</h3>
+    <div class="code-block" style="margin-top:0.5rem; font-size:0.72rem">
+```
+
+server {
+listen 443 ssl;
+server_name api.mybank.com;
+
+ssl_certificate     /etc/ssl/certs/api.crt;
+ssl_certificate_key /etc/ssl/private/api.key;
+ssl_trusted_certificate /etc/ssl/ca-chain.pem;
+
+<span class="comment"># Modern TLS — disable old versions</span>
+ssl_protocols TLSv1.2 TLSv1.3;
+ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:
+ECDHE-RSA-AES128-GCM-SHA256:
+TLS_AES_256_GCM_SHA384;
+ssl_prefer_server_ciphers off;
+
+<span class="comment"># OCSP stapling</span>
+ssl_stapling on;
+ssl_stapling_verify on;
+
+<span class="comment"># HSTS header</span>
+add_header Strict-Transport-Security
+“max-age=63072000; includeSubDomains; preload”;
+}
+</div>
+</div>
+
+```
+  <div class="card">
+    <h3>Istio mTLS (service mesh)</h3>
+    <div class="code-block" style="margin-top:0.5rem; font-size:0.72rem">
+```
+
+## <span class="comment"># Enforce STRICT mTLS across all services in ns</span>
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+name: default
+namespace: production
+spec:
+mtls:
+mode: STRICT
+
+<span class="comment"># Allow only specific principals (SPIFFE IDs)</span>
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+name: payment-authz
+namespace: production
+spec:
+selector:
+matchLabels:
+app: payment-svc
+action: ALLOW
+rules:
+
+- from:
+  - source:
+    principals:
+    - “cluster.local/ns/prod/sa/api-gateway”
+    
+      </div>
+    </div>
+  
+  </div>
+  
+  <div class="divider"></div>
+  
+  <div class="sec-title">Cert <span>Lifecycle Automation</span></div>
+  <div class="flow">
+    <div class="flow-step"><span class="num">1</span><div class="label">Generate CSR / key</div></div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-step"><span class="num">2</span><div class="label">Submit to CA (ACME/internal)</div></div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-step"><span class="num">3</span><div class="label">CA validates + signs</div></div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-step"><span class="num">4</span><div class="label">Store in Secret / Vault</div></div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-step"><span class="num">5</span><div class="label">Deploy + reload service</div></div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-step"><span class="num">6</span><div class="label">Monitor expiry → auto-renew</div></div>
+  </div>
+  
+  <div class="alert alert-red">
+    <span class="alert-icon">🔥</span>
+    <div><strong>The #1 SRE Incident: Forgotten cert expiry.</strong> In 2021, Microsoft Teams went down because a cert expired. In 2024, a major bank had 4h outage. Fix: Prometheus <code>x509_cert_expiry</code> metric + alerting at 30d and 7d before expiry.</div>
+  </div>
+
+  </div>
+</section>
+
+<!-- ═══════════════════════════════ TROUBLESHOOT ═══════════════════════════════ -->
+
+<section id="troubleshoot">
+  <div class="container">
+    <div class="sec-title">Debug & <span>Troubleshoot</span></div>
+    <p class="sec-desc">Systematic approach to diagnosing TLS errors. 80% of issues fall into 5 categories.</p>
+
+```
+<div class="grid2">
+  <div class="card card-accent-red">
+    <h3>SSL_ERROR_RX_RECORD_TOO_LONG</h3>
+    <p>Client sent HTTPS to an HTTP port, or vice versa. Or wrong port. Check: is nginx listening on 443 with SSL config?</p>
+  </div>
+  <div class="card card-accent-red">
+    <h3>CERTIFICATE_VERIFY_FAILED</h3>
+    <p>CA not trusted by client. Fix: add CA cert to client's truststore / OS trust store. Common with internal PKI.</p>
+  </div>
+  <div class="card card-accent-orange">
+    <h3>SSL: CERTIFICATE_EXPIRED</h3>
+    <p>Not After date is in the past. Renew immediately. Check ALL certs in the chain — intermediate can also expire.</p>
+  </div>
+  <div class="card card-accent-orange">
+    <h3>Hostname Mismatch</h3>
+    <p>CN or SAN doesn't match the hostname. Verify with: <code>openssl x509 -in cert.pem -noout -text | grep DNS</code>. Add missing SANs to CSR.</p>
+  </div>
+  <div class="card">
+    <h3>Incomplete Chain</h3>
+    <p>Server sends leaf cert but not intermediate. Browser might work (downloads AIA), but curl/Java will fail. Always include full chain in <code>ssl_certificate</code>.</p>
+  </div>
+  <div class="card">
+    <h3>Wrong Cipher / Protocol</h3>
+    <p>Server configured SSLv3/TLS1.0, client rejects it. Or ECDHE not supported. Use <code>openssl s_client</code> with <code>-tls1_2</code> flag to test.</p>
+  </div>
+</div>
+
+<div class="code-label">// Diagnostic one-liners</div>
+<div class="code-block">
+```
+
+<span class="comment"># Full handshake debug with TLS version and cipher used</span>
+<span class="cmd">openssl s_client</span> <span class="flag">-connect host:443 -tls1_3 -servername host</span>
+<span class="out">Protocol  : TLSv1.3
+Cipher    : TLS_AES_256_GCM_SHA384
+Verify return code: 0 (ok)</span>
+
+<span class="comment"># Test with curl (verbose TLS info)</span>
+<span class="cmd">curl</span> <span class="flag">-v –tlsv1.2</span> <span class="val">https://api.example.com</span> 2>&1 | grep -E “SSL|TLS|cert|expire”
+
+<span class="comment"># Check which certs are being served (chain)</span>
+<span class="cmd">openssl s_client</span> <span class="flag">-connect host:443 -showcerts</span> 2>/dev/null |   
+<span class="cmd">openssl x509</span> <span class="flag">-noout -text</span>
+
+<span class="comment"># Verify OCSP response</span>
+<span class="cmd">openssl ocsp</span> <span class="flag">-issuer chain.pem -cert server.crt</span>   
+<span class="flag">-url http://ocsp.digicert.com -resp_text</span>
+<span class="out">Response verify OK
+server.crt: good
+This Update: Jan 15 10:00:00 2025 GMT</span>
+
+<span class="comment"># Prometheus: scrape TLS cert expiry</span>
+<span class="comment"># x509-certificate-exporter or blackbox_exporter</span>
+<span class="cmd">curl</span> <span class="val">http://localhost:9115/probe?target=https://api.mybank.com&module=http_2xx</span>
+</div>
+
+```
+<div class="divider"></div>
+
+<div class="sec-title">Prometheus <span>Alerting</span> for Cert Expiry</div>
+<div class="code-block">
+```
+
+<span class="comment"># x509-certificate-exporter metric</span>
+<span class="out">x509_cert_not_after{cn=“api.mybank.com”} 1.7e+09</span>
+
+<span class="comment"># PrometheusRule — alert 30 days before expiry</span>
+groups:
+
+- name: tls.cert.expiry
+  rules:
+  - alert: CertExpiryWarning
+    expr: |
+    (x509_cert_not_after - time()) / 86400 < 30
+    for: 1h
+    labels:
+    severity: warning
+    annotations:
+    summary: “Cert expires in {{ $value | humanizeDuration }}”
+    description: “Certificate {{ $labels.cn }} expires soon”
+  - alert: CertExpiryCritical
+    expr: |
+    (x509_cert_not_after - time()) / 86400 < 7
+    for: 5m
+    labels:
+    severity: critical
+    annotations:
+    summary: “CRITICAL: Cert expires in < 7 days”
+    
+    </div>
+    
+    <div class="divider"></div>
+    
+    <div class="sec-title">Quick <span>Reference</span></div>
+    <div class="status-grid">
+      <div class="status-item">
+        <div class="s-label">Max cert validity (2025+)</div>
+        <div class="s-val" style="color:var(--accent3)">47d</div>
+        <div class="s-desc">CA/Browser Forum ruling. Automate or die.</div>
+      </div>
+      <div class="status-item">
+        <div class="s-label">TLS 1.3 RTT</div>
+        <div class="s-val">1</div>
+        <div class="s-desc">vs 2 RTT for TLS 1.2</div>
+      </div>
+      <div class="status-item">
+        <div class="s-label">Default HTTPS port</div>
+        <div class="s-val" style="color:var(--accent2)">443</div>
+        <div class="s-desc">TCP. Also 8443 for app servers</div>
+      </div>
+      <div class="status-item">
+        <div class="s-label">RSA key size (min)</div>
+        <div class="s-val">2048</div>
+        <div class="s-desc">4096 for CAs. ECDSA P-256 = equivalent to RSA 3072</div>
+      </div>
+      <div class="status-item">
+        <div class="s-label">Renewal trigger</div>
+        <div class="s-val" style="color:var(--yellow)">30d</div>
+        <div class="s-desc">Alert at 30d, renew at 14d before expiry</div>
+      </div>
+      <div class="status-item">
+        <div class="s-label">Wildcard depth</div>
+        <div class="s-val">1</div>
+        <div class="s-desc">*.example.com only. Not *.*.example.com</div>
+      </div>
+    </div>
+  
+  </div>
+
+</section>
+
+<script>
+  function show(id) {
+    document.querySelectorAll('section').forEach(s => s.classList.remove('active'));
+    document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+    document.getElementById(id).classList.add('active');
+    event.target.classList.add('active');
+    window.scrollTo(0, 0);
+  }
+</script>
+
+</body>
+</html>
